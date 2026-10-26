@@ -6,6 +6,8 @@ readme = "README.md"
 requires-python = ">=3.13"
 license = "Apache-2.0"
 license-files = ["LICENSE"]
+authors = [{ name = "Adil Zouitine" }]
+keywords = ["concurrency", "threads", "model-checking", "testing", "pytest", "loom"]
 dependencies = [
     "cloudpickle>=3.1.2",
     "pydantic>=2.14.1",
@@ -13,13 +15,21 @@ dependencies = [
 ]
 classifiers = [
     "Development Status :: 3 - Alpha",
+    "Framework :: Pytest",
     "Intended Audience :: Developers",
     "Programming Language :: Python :: 3 :: Only",
     "Programming Language :: Python :: 3.13",
     "Programming Language :: Python :: 3.14",
+    "Programming Language :: Python :: Free Threading :: 3 - Stable",
     "Topic :: Software Development :: Testing",
     "Typing :: Typed",
 ]
+
+[project.urls]
+Homepage = "https://github.com/AdilZouitine/ploom"
+Documentation = "https://ploom.readthedocs.io/"
+Repository = "https://github.com/AdilZouitine/ploom"
+Issues = "https://github.com/AdilZouitine/ploom/issues"
 
 [build-system]
 requires = ["uv_build>=0.11.3,<0.12"]

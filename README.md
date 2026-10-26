@@ -4,7 +4,7 @@
 [![Coverage](https://codecov.io/gh/AdilZouitine/ploom/graph/badge.svg)](https://codecov.io/gh/AdilZouitine/ploom)
 [![CodSpeed](https://img.shields.io/endpoint?url=https://codspeed.io/badge.json)](https://app.codspeed.io/AdilZouitine/ploom)
 [![Python](https://img.shields.io/badge/python-3.13%20%7C%203.14%20%7C%20free--threaded-blue)](https://docs.python.org/3/howto/free-threading-python.html)
-[![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
+[![License](https://img.shields.io/badge/license-Apache--2.0-blue)](https://github.com/AdilZouitine/ploom/blob/main/LICENSE)
 [![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
 [![uv](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/uv/main/assets/badge/v0.json)](https://github.com/astral-sh/uv)
 
@@ -82,7 +82,7 @@ def withdraw():
 ```
 
 Now all 127 orders pass, and `ploom.check` returns the exploration statistics.
-[`examples/bank_account.py`](examples/bank_account.py) contains the version
+[`examples/bank_account.py`](https://github.com/AdilZouitine/ploom/blob/main/examples/bank_account.py) contains the version
 without the lock.
 
 ## Use it in pytest
@@ -173,4 +173,4 @@ C11 memory model or its partial-order reduction.
 
 ## License
 
-Ploom is licensed under [Apache-2.0](LICENSE).
+Ploom is licensed under [Apache-2.0](https://github.com/AdilZouitine/ploom/blob/main/LICENSE).
