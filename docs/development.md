@@ -52,10 +52,20 @@ an artifact. API pages use mkdocstrings' Python handler and the Material theme.
 make benchmark
 ```
 
-The `benchmarks` dependency group contains pytest-codspeed. Benchmarks cover trace
-branch enumeration, preemption counting, and replay comparison. They measure the
-functional core, not subprocess startup or uninstrumented native execution.
-CodSpeed runs these workloads in simulation mode on standard Python in Linux CI.
+The `benchmarks` dependency group contains pytest-codspeed. Benchmarks cover:
+
+- trace processing: branch enumeration, preemption counting, replay comparison;
+- schedule search: exhaustive and preemption-bounded `explore`, and `minimize`,
+  driven by a pure-Python runner over a synthetic schedule tree;
+- trace serialization: trace construction, JSON encoding and decoding, and the
+  worker evidence round trip;
+- the in-process `ThreadScheduler`: one execution with many hand-offs, and an
+  exhaustive exploration of the README example guarded by a lock.
+
+None of them start worker processes. The scheduler benchmarks hand control
+between native threads, so their simulated time excludes the time spent in system
+calls. CodSpeed runs these workloads in simulation mode on standard Python in
+Linux CI.
 
 ## CI reporting
 

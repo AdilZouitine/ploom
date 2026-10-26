@@ -2,6 +2,7 @@ name: CodSpeed
 
 on:
   push:
+    branches: [main]
   pull_request:
   workflow_dispatch:
 
@@ -10,7 +11,7 @@ permissions:
 
 jobs:
   benchmarks:
-    name: Trace-processing performance
+    name: Benchmarks
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -28,7 +29,7 @@ jobs:
           python-version: "3.13"
       - name: Install benchmark dependencies
         run: uv sync --locked --group benchmarks --python "${{ steps.python.outputs.python-path }}"
-      - name: Measure the functional core
+      - name: Run benchmarks
         uses: CodSpeedHQ/action@v5
         with:
           mode: simulation
