@@ -12,7 +12,15 @@ from typing import Annotated, assert_never
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from ploom.execution import Diverged, Execution, ExplorationLimit, Failed, Incomplete, Passed
+from ploom.execution import (
+    Diverged,
+    Execution,
+    ExplorationLimit,
+    Failed,
+    Incomplete,
+    Passed,
+    Rejected,
+)
 from ploom.scenarios import PreparedScenario, ScenarioSource, prepare_scenario
 from ploom.trace import Config, read_execution
 
@@ -118,7 +126,7 @@ class SubprocessRunner:
             case Failed(failure) if scenario_output:
                 traceback = f"{failure.traceback}\nWorker output:\n{scenario_output}"
                 return replace(execution, outcome=Failed(replace(failure, traceback=traceback)))
-            case Passed() | Failed() | Incomplete() | Diverged():
+            case Passed() | Failed() | Incomplete() | Diverged() | Rejected():
                 return execution
             case _ as unreachable:
                 assert_never(unreachable)

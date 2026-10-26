@@ -108,7 +108,7 @@ def test_cancellation_preserves_cleanup_failures_after_scheduler_outcomes(deadlo
         finally:
             raise ValueError("cleanup failed")
 
-    scheduler = ThreadScheduler(max_steps=100 if deadlock else 1, max_tasks=16)
+    scheduler = ThreadScheduler(ploom.Config(max_steps=100 if deadlock else 1, max_tasks=16))
     execution = scheduler.execute(scenario, (), None)
     match execution.outcome:
         case Failed(failure):
@@ -154,7 +154,9 @@ def test_task_limit_survives_scenario_exception_handlers() -> None:
             ploom.Thread().start()
         ploom.yield_now()
 
-    execution = ThreadScheduler(max_steps=100, max_tasks=1).execute(scenario, (), None)
+    execution = ThreadScheduler(ploom.Config(max_steps=100, max_tasks=1)).execute(
+        scenario, (), None
+    )
     assert execution.outcome == Incomplete(ExplorationLimit.TASKS)
 
 

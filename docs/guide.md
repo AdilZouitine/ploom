@@ -194,3 +194,66 @@ conflicting orders. See [the precise contract](semantics.md#opt-in-partial-order
 before enabling it. The default exhaustive mode remains useful when adapting an
 existing scenario. With a preemption bound, exploration automatically uses the
 ordinary exhaustive algorithm within the bound.
+
+## Reproduce a suspected race with an event order
+
+Name modeled threads, place `ploom.checkpoint("label")` immediately before or
+following the operation you want to identify, and constrain their order:
+
+```python
+order = ploom.Config(ordering=(
+    ploom.Before(
+        before=ploom.Point(thread="reader", event="read-complete"),
+        after=ploom.Point(thread="writer", event="before-write"),
+    ),
+))
+ploom.check(scenario, config=order)
+```
+
+In this example the reader calls `checkpoint("read-complete")` after its read;
+the writer calls `checkpoint("before-write")` before its write. A checkpoint is
+selected before its caller continues. These labels do not automatically instrument
+ordinary Python reads or writes: continue to use supported modeled operations.
+
+To require Y to finish before A, and A before X, use lifecycle events:
+
+```python
+order = ploom.Config(ordering=(
+    ploom.Before(
+        before=ploom.Point(thread="Y", event="@finish"),
+        after=ploom.Point(thread="A", event="@finish"),
+    ),
+    ploom.Before(
+        before=ploom.Point(thread="A", event="@finish"),
+        after=ploom.Point(thread="X", event="@finish"),
+    ),
+))
+```
+
+`@start` is the instant a named thread may begin its target. `@finish` is a
+scheduling point after its target returns, including user `finally` blocks,
+immediately before modeled thread termination. Completion order allows earlier
+work to interleave; use A's `@finish` before X's `@start` to prohibit that overlap.
+Calling joins in a chosen order does not enforce thread completion order.
+
+For loops, pass distinct explicit occurrence numbers, for example
+`checkpoint("read", occurrence=iteration + 1)` and
+`Point(thread="reader", event="read", occurrence=2)`. Use ascending occurrence
+numbers for repeated labels. Names starting with `@` are reserved. Named points
+require named threads, and thread names used as event identities and checkpoint identities must be unique.
+Duplicate display names without named events remain supported.
+
+Ploom explores the remaining compatible choices, subject to the configured
+limits. A constrained pass covers only this partial order. Prefixes that cannot
+reach all referenced events are rejected and the search continues. If none can
+complete, `ScheduleConstraintError` describes unresolved events, including unknown
+thread names and absent checkpoints. Cyclic configuration fails validation before
+execution. A resource limit still raises `IncompleteExplorationError`.
+
+An exception on a permitted execution prefix fails immediately, even if a later
+requested event has not been reached. If every pending operation is blocked on a primitive, ploom reports the normal
+`DeadlockError`, even with future requested events outstanding. If otherwise
+runnable operations are all held back by ordering edges, the prefix is rejected
+as incompatible. Constraints remain in original and minimized traces and apply
+during replay and minimization. This provides an editable regression test across
+code changes; strict replay continues to require matching source provenance.

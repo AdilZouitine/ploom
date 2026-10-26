@@ -166,7 +166,7 @@ def test_scheduler_joins_owned_threads() -> None:
         task = ploom.Thread(target=ploom.yield_now)
         task.start()
 
-    scheduler = ThreadScheduler(100, 16)
+    scheduler = ThreadScheduler(ploom.Config(max_steps=100, max_tasks=16))
     execution = scheduler.execute(scenario, (), None)
     assert execution.outcome.kind == "passed"
     assert not any(thread.name.startswith("ploom-") for thread in threading.enumerate())

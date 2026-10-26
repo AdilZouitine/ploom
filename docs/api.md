@@ -17,6 +17,10 @@ and Google-style docstrings.
         - BoundedSemaphore
         - Queue
         - SharedCell
+        - checkpoint
+        - Point
+        - Before
+        - ScheduleConstraintError
         - yield_now
         - Config
         - Statistics
@@ -34,6 +38,7 @@ and Google-style docstrings.
         - Failed
         - Incomplete
         - Diverged
+        - Rejected
         - Failure
         - Reduction
         - ExecutionStatus

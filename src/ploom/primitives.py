@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from functools import partial
 from types import NoneType
 
+from ploom.constraints import RESERVED_EVENT_PREFIX
 from ploom.execution import (
     PrimitiveOperation,
     PrimitiveOperationKind,
@@ -285,7 +286,7 @@ class Thread:
         self.name = name
         self._bound_target = partial(idle if target is None else target, *args, **(kwargs or {}))
         scheduler = current_task_context().scheduler
-        self._task = ModeledResource(scheduler, scheduler.create_task())
+        self._task = ModeledResource(scheduler, scheduler.create_task(name))
 
     def _task_state(self) -> TaskState:
         return self._task.scheduler.task_state(self._task.identity)
@@ -342,3 +343,14 @@ def yield_now() -> None:
         1
     """
     current_task_context().scheduler.checkpoint(TaskCheckpoint(TaskCheckpointKind.YIELD))
+
+
+def checkpoint(name: str, *, occurrence: int = 1) -> None:
+    """Select a named scheduling point before continuing the current thread.
+
+    Call inside a named ``Thread`` target. Use explicit occurrence numbers for
+    repeated points; names starting with @ are reserved for lifecycle events.
+    """
+    if not name or name.startswith(RESERVED_EVENT_PREFIX):
+        raise ValueError("checkpoint names must be nonempty and cannot start with @")
+    current_task_context().scheduler.named_checkpoint(name, occurrence)

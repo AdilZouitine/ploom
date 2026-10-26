@@ -24,7 +24,7 @@ class InlineRunner:
         /,
     ) -> Execution:
         """Execute one schedule of ``locked_withdrawals``."""
-        return ThreadScheduler(CONFIG.max_steps, CONFIG.max_tasks).execute(
+        return ThreadScheduler(CONFIG).execute(
             locked_withdrawals, required_prefix, expected_execution
         )
 
@@ -65,9 +65,7 @@ def yielding_tasks() -> None:
 @pytest.mark.benchmark
 def test_single_execution() -> None:
     """Measure one default schedule with 60 modeled thread hand-offs."""
-    execution = ThreadScheduler(CONFIG.max_steps, CONFIG.max_tasks).execute(
-        yielding_tasks, (), None
-    )
+    execution = ThreadScheduler(CONFIG).execute(yielding_tasks, (), None)
     assert execution.outcome == Passed()
 
 

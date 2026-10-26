@@ -12,12 +12,14 @@ import sysconfig
 import threading
 import traceback
 from collections import Counter
+from contextlib import contextmanager
 from dataclasses import dataclass
 from enum import StrEnum, auto
 from itertools import count, filterfalse
 from pathlib import Path
-from typing import TYPE_CHECKING, assert_never
+from typing import TYPE_CHECKING, NoReturn, assert_never
 
+from ploom.constraints import LifecycleEvent, Point
 from ploom.execution import (
     Diverged,
     Execution,
@@ -26,9 +28,11 @@ from ploom.execution import (
     Failure,
     FailureCategory,
     Incomplete,
+    NamedCheckpoint,
     Operation,
     Outcome,
     Passed,
+    Rejected,
     Step,
     TaskCheckpoint,
     TaskCheckpointKind,
@@ -36,8 +40,10 @@ from ploom.execution import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Generator
     from types import FrameType, TracebackType
+
+    from ploom.trace import Config
 
 LIBRARY_DIRECTORIES = (
     Path(__file__).parent,
@@ -92,11 +98,13 @@ class PendingOperation:
         operation: The modeled operation.
         task_operation_index: How many operations the task published before it.
         can_proceed: Whether the operation can run now, such as a free lock.
+        point: Validated named event identity, if this is a named checkpoint.
     """
 
     operation: Operation
     task_operation_index: int
     can_proceed: Callable[[], bool]
+    point: Point | None = None
 
     @property
     def step_operation(self) -> str:
@@ -198,24 +206,28 @@ class ThreadScheduler:
     """Own one execution's threads and grant control to exactly one of them.
 
     Args:
-        max_steps: Maximum modeled operations before the execution is incomplete.
-        max_tasks: Maximum concurrently running tasks, including the root task.
+        config: Validated limits. The scheduler reads ``max_steps``, ``max_tasks``,
+            ``ordering``, and ``partial_order_reduction``; with reduction, resources
+            and tasks must be allocated before any child starts.
         join_timeout: Seconds to wait for each cancelled task, or None to wait
             until a supervising process enforces its deadline.
-        partial_order_reduction: Require resources and tasks to be allocated before
-            any child starts, preserving identities across commuting transitions.
         start_native_thread: Starts a native thread; injectable to test failure.
     """
 
     def __init__(
         self,
-        max_steps: int,
-        max_tasks: int,
+        config: Config,
         *,
         join_timeout: float | None = None,
-        partial_order_reduction: bool = False,
         start_native_thread: Callable[[threading.Thread], None] = threading.Thread.start,
     ) -> None:
+        self.ordering = config.ordering
+        self.required_points = frozenset(
+            point for edge in self.ordering for point in (edge.before, edge.after)
+        )
+        self.observed_points: set[Point] = set()
+        self.task_names: dict[int, str] = {}
+        self.published_points: set[Point] = set()
         self.coordination = threading.Condition()
         self.task_states: dict[int, TaskState] = {}
         self.native_threads: dict[int, threading.Thread] = {}
@@ -226,11 +238,11 @@ class ThreadScheduler:
         self.terminal_outcome: Outcome | None = None
         self.cleanup_failures: list[Failure] = []
         self.start_native_thread = start_native_thread
-        self.max_steps = max_steps
-        self.max_tasks = max_tasks
+        self.max_steps = config.max_steps
+        self.max_tasks = config.max_tasks
         self.join_timeout = join_timeout
         self.resource_identity_counter = count()
-        self.partial_order_reduction = partial_order_reduction
+        self.partial_order_reduction = config.partial_order_reduction
 
     def allocate_resource(self) -> int:
         """Assign a stable execution-local identity while one task owns control."""
@@ -256,11 +268,18 @@ class ThreadScheduler:
             case _ as unreachable:
                 assert_never(unreachable)
 
-    def create_task(self) -> int:
+    def create_task(self, name: str | None = None) -> int:
         """Register an unstarted task without acquiring an OS thread."""
         with self.coordination:
             self.require_initial_allocation()
             task = len(self.task_states)
+            if name is not None:
+                identity_in_use = any(
+                    point.thread == name for point in self.required_points | self.published_points
+                )
+                if identity_in_use and name in self.task_names.values():
+                    self.reject(f"duplicate thread name: {name}")
+                self.task_names[task] = name
             self.task_states[task] = TaskState.UNSTARTED
             return task
 
@@ -288,7 +307,11 @@ class ThreadScheduler:
         return self.task_states[task]
 
     def checkpoint(
-        self, operation: Operation, can_proceed: Callable[[], bool] = always_ready
+        self,
+        operation: Operation,
+        can_proceed: Callable[[], bool] = always_ready,
+        *,
+        point: Point | None = None,
     ) -> None:
         """Publish an operation and suspend until the coordinator selects it."""
         context = current_task_context()
@@ -301,7 +324,7 @@ class ThreadScheduler:
             task_operation_index = self.published_operation_counts[task]
             self.published_operation_counts[task] += 1
             self.pending_operations[task] = PendingOperation(
-                operation, task_operation_index, can_proceed
+                operation, task_operation_index, can_proceed, point
             )
             if self.phase == Granted(task):
                 self.phase = Choosing()
@@ -314,7 +337,66 @@ class ThreadScheduler:
         """Run one task's code inside the scope that publishes its outcome."""
         with TaskContext(self, task):
             self.checkpoint(TaskCheckpoint(TaskCheckpointKind.BEGIN))
-            target()
+            with self.lifecycle_events(task):
+                target()
+
+    @contextmanager
+    def lifecycle_events(self, task: int) -> Generator[None]:
+        """Select @start before a constrained task's target and @finish after it returns.
+
+        A target that raises never selects @finish.
+        """
+        name = self.task_names.get(task)
+        if not any(point.thread == name for point in self.required_points):
+            yield
+            return
+        self.named_checkpoint(LifecycleEvent.START)
+        yield
+        self.named_checkpoint(LifecycleEvent.FINISH)
+
+    def reject(self, message: str) -> NoReturn:
+        """End the execution as rejected and cancel the calling task."""
+        self.terminal_outcome = Rejected(message)
+        raise Cancelled
+
+    def named_checkpoint(self, event: str, occurrence: int = 1) -> None:
+        """Publish one uniquely identified point in the current named task."""
+        task = current_task_context().task
+        name = self.task_names.get(task)
+        if name is None:
+            self.reject("named checkpoints require a named Thread")
+        if sum(registered == name for registered in self.task_names.values()) != 1:
+            self.reject(f"ambiguous thread name: {name}")
+        point = Point(thread=name, event=event, occurrence=occurrence)
+        if any(
+            previous.thread == name
+            and previous.event == event
+            and previous.occurrence >= occurrence
+            for previous in self.published_points
+        ):
+            self.reject(f"duplicate checkpoint: {point}")
+        self.published_points.add(point)
+        self.checkpoint(NamedCheckpoint(event, occurrence), point=point)
+
+    def point_ready(self, task: int) -> bool:
+        """Whether every requested predecessor of this event has executed."""
+        point = self.pending_operations[task].point
+        if point is None:
+            return True
+        return all(
+            edge.before in self.observed_points for edge in self.ordering if edge.after == point
+        )
+
+    def completed_outcome(self) -> Passed | Rejected:
+        """Pass a finished execution only when it selected every constrained event."""
+        if self.required_points <= self.observed_points:
+            return Passed()
+        return self.rejected_outcome()
+
+    def rejected_outcome(self) -> Rejected:
+        """Explain unresolved references without calling a restricted prefix a pass."""
+        missing = sorted(map(str, self.required_points - self.observed_points))
+        return Rejected(f"schedule constraints cannot be satisfied; missing events: {missing}")
 
     def finish_task(self, task: int, error: BaseException | None) -> None:
         """Keep the first task failure as the outcome, then release control."""
@@ -367,14 +449,21 @@ class ThreadScheduler:
         if self.terminal_outcome is not None:
             return self.terminal_outcome
         if not self.pending_operations:
-            return Passed()
-        runnable_tasks = tuple(
+            return self.completed_outcome()
+        ready_tasks = tuple(
             task
             for task, pending in sorted(self.pending_operations.items())
             if pending.can_proceed()
         )
-        if not runnable_tasks:
+        if not ready_tasks:
             return self.deadlock_outcome()
+        # Ordinary scenarios need no second pass over runnable tasks. Ordering
+        # is fixed for the execution, so only constrained runs pay for filtering.
+        runnable_tasks = ready_tasks
+        if self.ordering:
+            runnable_tasks = tuple(task for task in ready_tasks if self.point_ready(task))
+            if not runnable_tasks:
+                return self.rejected_outcome()
         if len(self.recorded_steps) >= self.max_steps:
             return Incomplete(ExplorationLimit.STEPS)
         return self.select_step(runnable_tasks, required_prefix, expected_execution)
@@ -417,11 +506,14 @@ class ThreadScheduler:
                 self.coordination.wait_for(lambda: self.phase == Choosing())
                 match self.choose_next_step(required_prefix, expected_execution):
                     case Step(task=chosen_task) as step:
+                        point = self.pending_operations[chosen_task].point
+                        if point is not None:
+                            self.observed_points.add(point)
                         self.recorded_steps.append(step)
                         del self.pending_operations[chosen_task]
                         self.phase = Granted(chosen_task)
                         self.coordination.notify_all()
-                    case Passed() | Failed() | Incomplete() | Diverged() as outcome:
+                    case Passed() | Failed() | Incomplete() | Diverged() | Rejected() as outcome:
                         self.terminal_outcome = outcome
                         return outcome
                     case _ as unreachable:

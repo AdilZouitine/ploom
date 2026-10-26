@@ -9,6 +9,7 @@ from typing import Annotated, Literal, assert_never
 
 from pydantic import AfterValidator, BaseModel, ConfigDict, Field
 
+from ploom.constraints import Before, validate_ordering
 from ploom.execution import (
     Diverged,
     Execution,
@@ -17,6 +18,7 @@ from ploom.execution import (
     Incomplete,
     Outcome,
     Passed,
+    Rejected,
     Step,
 )
 
@@ -38,6 +40,7 @@ class Config(BaseModel):
             process, so ``str`` hashing and set order must not change between them.
         minimize_executions: Additional executions allowed for failure reduction.
         minimize_timeout: Separate reduction wall-time budget in seconds.
+        ordering: Partial event order; success covers compatible schedules only.
 
     Examples:
         >>> limits = Config(max_steps=20, timeout=5.0)
@@ -60,6 +63,7 @@ class Config(BaseModel):
     hash_seed: int = Field(default=0, ge=0, le=4_294_967_295)
     minimize_executions: int = Field(default=100, ge=0)
     minimize_timeout: float = Field(default=2.0, ge=0)
+    ordering: Annotated[tuple[Before, ...], AfterValidator(validate_ordering)] = ()
 
 
 class ScenarioTransport(StrEnum):
@@ -179,7 +183,7 @@ class Trace(BaseModel):
                     outcome=outcome,
                     cleanup_failures=execution.cleanup_failures,
                 )
-            case Incomplete() | Diverged():
+            case Incomplete() | Diverged() | Rejected():
                 raise ValueError("only passed or failed executions are replayable evidence")
             case _ as unreachable:
                 assert_never(unreachable)

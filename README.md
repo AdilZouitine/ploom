@@ -101,6 +101,14 @@ ploom first failure: .ploom/ID-original.json
 Replay: pytest tests/test_bank.py::test_withdraw --ploom-replay=.ploom/ID-original.json
 ```
 
+## Reproduce a suspected order
+
+Name threads and add `ploom.checkpoint("label")` at relevant modeled boundaries.
+`Config(ordering=(Before(before=Point(...), after=Point(...)),))` explores schedules
+compatible with a partial event order, including thread `@start` and `@finish`.
+See the [guide](https://ploom.readthedocs.io/guide/#reproduce-a-suspected-race-with-an-event-order)
+for checkpoint and completion-order examples. A constrained pass covers only that order.
+
 ## Replay a failure
 
 Replay runs one saved schedule. It does not search. Run the printed command:

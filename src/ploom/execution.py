@@ -66,6 +66,7 @@ class ExecutionStatus(StrEnum):
     FAILED = auto()
     INCOMPLETE = auto()
     DIVERGED = auto()
+    REJECTED = auto()
 
 
 class ExplorationLimit(StrEnum):
@@ -110,7 +111,20 @@ class PrimitiveOperation:
         return f"{self.kind}:{self.target}"
 
 
-type Operation = TaskCheckpoint | PrimitiveOperation
+@dataclass(frozen=True)
+class NamedCheckpoint:
+    """Identify a selected event in a named task."""
+
+    event: str
+    occurrence: int = 1
+
+    @property
+    def identity(self) -> str:
+        """Preserve label and occurrence in portable replay evidence."""
+        return f"checkpoint:{self.event}:{self.occurrence}"
+
+
+type Operation = TaskCheckpoint | PrimitiveOperation | NamedCheckpoint
 
 
 @dataclass(frozen=True)
@@ -184,7 +198,15 @@ class Diverged:
     kind: Literal[ExecutionStatus.DIVERGED] = ExecutionStatus.DIVERGED
 
 
-type Outcome = Passed | Failed | Incomplete | Diverged
+@dataclass(frozen=True)
+class Rejected:
+    """This prefix cannot complete the requested partial execution order."""
+
+    message: str
+    kind: Literal[ExecutionStatus.REJECTED] = ExecutionStatus.REJECTED
+
+
+type Outcome = Passed | Failed | Incomplete | Diverged | Rejected
 
 
 @dataclass(frozen=True)
@@ -313,7 +335,7 @@ def validate_replay(
             expected_execution
         ):
             return replace(execution, outcome=Diverged("terminal outcome changed"))
-        case Passed() | Failed() | Incomplete():
+        case Passed() | Failed() | Incomplete() | Rejected():
             return execution
         case _ as unreachable:
             assert_never(unreachable)
@@ -324,7 +346,7 @@ def replay_identity(execution: Execution) -> tuple[object, ...]:
     match execution.outcome:
         case Failed(failure):
             outcome_identity: object = failure.signature
-        case Passed() | Incomplete() | Diverged() as outcome_identity:
+        case Passed() | Incomplete() | Diverged() | Rejected() as outcome_identity:
             pass
         case _ as unreachable:
             assert_never(unreachable)

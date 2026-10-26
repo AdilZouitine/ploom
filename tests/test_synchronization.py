@@ -23,7 +23,9 @@ class PrimitiveRunner:
         expected_execution: Execution | None = None,
         /,
     ) -> Execution:
-        return ThreadScheduler(300, 8).execute(self.scenario, required_prefix, expected_execution)
+        return ThreadScheduler(ploom.Config(max_steps=300, max_tasks=8)).execute(
+            self.scenario, required_prefix, expected_execution
+        )
 
 
 def exhaustive(scenario: Callable[[], object]) -> None:

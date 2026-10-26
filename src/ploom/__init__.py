@@ -1,5 +1,6 @@
 """Explore and replay sequentially consistent interleavings of ploom operations."""
 
+from ploom.constraints import Before, Point, ScheduleConstraintError
 from ploom.execution import (
     Diverged,
     Execution,
@@ -12,6 +13,7 @@ from ploom.execution import (
     Outcome,
     Passed,
     ReductionStatus,
+    Rejected,
     Statistics,
     Step,
 )
@@ -24,11 +26,12 @@ from ploom.exploration import (
     check,
     replay,
 )
-from ploom.primitives import Lock, SharedCell, Thread, yield_now
+from ploom.primitives import Lock, SharedCell, Thread, checkpoint, yield_now
 from ploom.synchronization import BoundedSemaphore, Condition, Event, Queue, RLock, Semaphore
 from ploom.trace import Config, Provenance, ScenarioTransport, Trace, read_trace
 
 __all__ = [
+    "Before",
     "BoundedSemaphore",
     "Condition",
     "Config",
@@ -47,13 +50,16 @@ __all__ = [
     "ModelCheckError",
     "Outcome",
     "Passed",
+    "Point",
     "Provenance",
     "Queue",
     "RLock",
     "Reduction",
     "ReductionStatus",
+    "Rejected",
     "ReplayDivergenceError",
     "ScenarioTransport",
+    "ScheduleConstraintError",
     "Semaphore",
     "SharedCell",
     "Statistics",
@@ -61,6 +67,7 @@ __all__ = [
     "Thread",
     "Trace",
     "check",
+    "checkpoint",
     "read_trace",
     "replay",
     "yield_now",

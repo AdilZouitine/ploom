@@ -35,11 +35,9 @@ class InlineRunner:
         _timeout_seconds: float,
         expected_execution: Execution | None = None,
     ) -> Execution:
-        return ThreadScheduler(
-            self.config.max_steps,
-            self.config.max_tasks,
-            partial_order_reduction=self.config.partial_order_reduction,
-        ).execute(self.scenario, required_prefix, expected_execution)
+        return ThreadScheduler(self.config).execute(
+            self.scenario, required_prefix, expected_execution
+        )
 
 
 def independent_scenario() -> None:
@@ -133,6 +131,61 @@ def terminal_observations(scenario: Callable[[], None], reduced: bool) -> set[tu
         failure = failure_of(execution)
         result.add((failure.category, failure.message))
     return result
+
+
+def signalled_read_scenario() -> None:
+    ready = ploom.Event()
+    counter = ploom.SharedCell(0)
+    unrelated = ploom.SharedCell(0)
+
+    def increment() -> None:
+        unrelated.write(1)
+        counter.write(counter.read() + 1)
+        ready.set()
+
+    def read_then_wait() -> None:
+        value = counter.read()
+        ploom.checkpoint("read")
+        ready.wait()
+        assert value == 1, "read before increment"
+
+    workers = [
+        ploom.Thread(name="A", target=increment),
+        ploom.Thread(name="B", target=read_then_wait),
+    ]
+    for worker in workers:
+        worker.start()
+    for worker in workers:
+        worker.join()
+
+
+@pytest.mark.parametrize(
+    "ordering",
+    [
+        (),
+        (
+            ploom.Before(
+                before=ploom.Point(thread="B", event="read"),
+                after=ploom.Point(thread="A", event="@finish"),
+            ),
+        ),
+    ],
+)
+def test_reduction_preserves_outcomes_with_coordination_and_ordering(
+    ordering: tuple[ploom.Before, ...],
+) -> None:
+    def outcomes(reduced: bool) -> set[object]:
+        limits = config(reduced=reduced).model_copy(update={"ordering": ordering})
+        search = ScheduleSearch(
+            InlineRunner(signalled_read_scenario, limits),
+            monotonic() + 60,
+            50_000,
+            lambda: None,
+            partial_order_reduction=reduced,
+        )
+        return {replay_identity(execution)[1] for execution in search}
+
+    assert outcomes(reduced=False) == outcomes(reduced=True)
 
 
 def test_data_dependent_next_operations_preserve_observations() -> None:

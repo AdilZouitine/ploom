@@ -56,7 +56,7 @@ class InlineRunner:
     ) -> Execution:
         if timeout_seconds <= 0:
             return Execution((), Incomplete(ExplorationLimit.WALL_TIME))
-        execution = ThreadScheduler(self.config.max_steps, self.config.max_tasks).execute(
+        execution = ThreadScheduler(self.config).execute(
             self.scenario, required_prefix, expected_execution
         )
         self.executions.append(execution)
@@ -121,7 +121,7 @@ def test_lifecycle_and_unsupported_operations() -> None:
         child.join()
         ploom.Thread()  # Registered but unstarted tasks own no native resource.
 
-    scheduler = ThreadScheduler(100, 16)
+    scheduler = ThreadScheduler(ploom.Config(max_steps=100, max_tasks=16))
     assert scheduler.execute(scenario, (), None).outcome == Passed()
     with pytest.raises(RuntimeError, match="once"):
         scheduler.execute(scenario, (), None)
@@ -133,12 +133,19 @@ def test_cross_execution_resources_fail() -> None:
     def allocate() -> None:
         cells.append(ploom.SharedCell(1))
 
-    assert ThreadScheduler(10, 16).execute(allocate, (), None).outcome == Passed()
+    assert (
+        ThreadScheduler(ploom.Config(max_steps=10, max_tasks=16))
+        .execute(allocate, (), None)
+        .outcome
+        == Passed()
+    )
 
     def use_foreign_resource() -> None:
         cells[0].read()
 
-    execution = ThreadScheduler(10, 16).execute(use_foreign_resource, (), None)
+    execution = ThreadScheduler(ploom.Config(max_steps=10, max_tasks=16)).execute(
+        use_foreign_resource, (), None
+    )
     assert "different execution" in failure_of(execution).message
 
 
@@ -146,7 +153,9 @@ def test_partial_thread_acquisition_cleanup() -> None:
     def unavailable(_thread: threading.Thread) -> NoReturn:
         raise OSError("thread resource unavailable")
 
-    scheduler = ThreadScheduler(10, 16, start_native_thread=unavailable)
+    scheduler = ThreadScheduler(
+        ploom.Config(max_steps=10, max_tasks=16), start_native_thread=unavailable
+    )
     task = scheduler.create_task()
     with pytest.raises(OSError, match="unavailable"):
         scheduler.start_task(task, lambda: None)
@@ -166,7 +175,9 @@ def test_cancellation_preserves_original_and_cleanup_failures() -> None:
         ploom.yield_now()
         raise AssertionError("original failure")
 
-    execution = ThreadScheduler(100, 16).execute(scenario, (0, 0, 1, 0), None)
+    execution = ThreadScheduler(ploom.Config(max_steps=100, max_tasks=16)).execute(
+        scenario, (0, 0, 1, 0), None
+    )
     assert failure_of(execution).message == "original failure"
     assert execution.cleanup_failures[0].message == "cleanup failure"
 
@@ -177,7 +188,9 @@ def test_context_manager_cancellation_completes_cleanup() -> None:
         with lock:
             lock.acquire()
 
-    failure = failure_of(ThreadScheduler(10, 16).execute(scenario, (), None))
+    failure = failure_of(
+        ThreadScheduler(ploom.Config(max_steps=10, max_tasks=16)).execute(scenario, (), None)
+    )
     assert failure.category == "deadlock"
     assert failure.message == "no modeled task can proceed: task 0 at lock.acquire:0"
     assert failure.location == "deadlock: task 0 at lock.acquire:0"
@@ -187,14 +200,23 @@ def test_replay_checks_choices_length_and_terminal_outcome() -> None:
     def scenario() -> None:
         ploom.yield_now()
 
-    reference = ThreadScheduler(10, 16).execute(scenario, (), None)
+    reference = ThreadScheduler(ploom.Config(max_steps=10, max_tasks=16)).execute(
+        scenario, (), None
+    )
     missing = replace(reference, steps=reference.steps[:1])
     changed = replace(reference, outcome=Incomplete(ExplorationLimit.TASKS))
     longer = replace(reference, steps=(*reference.steps, reference.steps[-1]))
     for prefix, expected in (((99,), None), ((0,), missing), ((), changed), ((), longer)):
-        outcome = ThreadScheduler(10, 16).execute(scenario, prefix, expected).outcome
+        outcome = (
+            ThreadScheduler(ploom.Config(max_steps=10, max_tasks=16))
+            .execute(scenario, prefix, expected)
+            .outcome
+        )
         assert outcome.kind == "diverged", (prefix, expected)
-    assert ThreadScheduler(10, 16).execute(scenario, (), reference) == reference
+    assert (
+        ThreadScheduler(ploom.Config(max_steps=10, max_tasks=16)).execute(scenario, (), reference)
+        == reference
+    )
 
 
 def test_minimizer_reduces_preemptions() -> None:
@@ -466,7 +488,9 @@ def test_slow_cancellation_cleanup_keeps_the_original_failure() -> None:
         ploom.yield_now()
         raise AssertionError("original")
 
-    execution = ThreadScheduler(100, 16).execute(scenario, (0, 0, 1, 0), None)
+    execution = ThreadScheduler(ploom.Config(max_steps=100, max_tasks=16)).execute(
+        scenario, (0, 0, 1, 0), None
+    )
     assert failure_of(execution).message == "original"
 
 
@@ -495,7 +519,7 @@ def test_stalled_cleanup_is_reported_with_the_original_outcome() -> None:
         finally:
             release.wait(timeout=5)
 
-    scheduler = ThreadScheduler(100, 16, join_timeout=0.1)
+    scheduler = ThreadScheduler(ploom.Config(max_steps=100, max_tasks=16), join_timeout=0.1)
     with ExitStack() as stack:
         stack.callback(release.set)
         caught = stack.enter_context(pytest.raises(RuntimeError, match=r"did not stop: \[0\]"))
@@ -540,7 +564,9 @@ def test_failure_location_names_the_scenario_frame_not_library_internals() -> No
         json.loads("{")
 
     locations = [
-        failure_of(ThreadScheduler(10, 16).execute(scenario, (), None)).location
+        failure_of(
+            ThreadScheduler(ploom.Config(max_steps=10, max_tasks=16)).execute(scenario, (), None)
+        ).location
         for scenario in (first, second)
     ]
     assert locations[0].endswith("<locals>.first")

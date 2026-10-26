@@ -17,6 +17,7 @@ and a disabled GIL are not required.
 | `Condition` | Default `RLock` or supplied modeled lock, untimed `wait`/`wait_for`, FIFO `notify(n)`, `notify_all` |
 | `Queue[T]` | FIFO immutable values, bounded/unbounded capacity, blocking/nonblocking put/get, observations, `task_done`/`join` |
 | `SharedCell[T]` | Atomic modeled reads and writes |
+| `checkpoint(name, occurrence=1)` | Named scheduling point within a named thread |
 | `yield_now()` | A scheduling choice without a shared-state operation |
 
 Thread groups, daemon mode, and timed waits are rejected. Threads may start only
@@ -165,3 +166,26 @@ also uses exhaustive search with its decreasing preemption bound. Saved traces
 retain the reduction setting; replay runs their exact schedule without pruning.
 A successful unbounded reduced search covers every terminal behavior class under
 the stated independence contract, rather than enumerating every schedule.
+
+## Partial event orders
+
+`Config.ordering` restricts exploration to a validated acyclic order of `Point`
+events connected by `Before` edges. A point is selected before its caller
+continues. Lifecycle points `@start` and `@finish` bracket the target of every
+referenced named thread; finish is selected after the target's cleanup and directly
+before modeled termination. Their introduction adds scheduling choices only for
+threads referenced by constraints. Every named checkpoint is an explicit
+scheduling point, including without constraints.
+
+Only schedules that reach every referenced event can pass. Rejected prefixes are
+not counterexamples or replayable traces. If the complete bounded search finds
+none that pass or fail on a permitted prefix, it raises `ScheduleConstraintError`.
+A prefix is rejected when otherwise runnable operations are all gated by ordering
+edges. If all pending operations are blocked on modeled primitives, it is an
+ordinary deadlock even with requested events outstanding.
+Task exceptions on permitted prefixes remain failures and are never suppressed
+by a missing future event. Search limits never imply compatibility or success.
+
+Event ordering controls only the specified modeled events. It adds no native
+synchronization to production code and does not strengthen the Python memory
+model. Run unconstrained exploration as well when broader coverage is needed.

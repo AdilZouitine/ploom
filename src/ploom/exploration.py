@@ -1,7 +1,7 @@
 """Explore schedules, preserve first failures, and reduce them independently."""
 
 import logging
-from collections.abc import Callable, Generator, Iterator
+from collections.abc import Callable, Generator, Iterable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
@@ -9,6 +9,7 @@ from time import monotonic
 from typing import Protocol, assert_never, override
 from uuid import uuid4
 
+from ploom.constraints import ScheduleConstraintError
 from ploom.execution import (
     Diverged,
     Execution,
@@ -19,6 +20,7 @@ from ploom.execution import (
     Incomplete,
     Passed,
     ReductionStatus,
+    Rejected,
     Statistics,
     alternative_prefixes,
     count_preemptions,
@@ -238,7 +240,7 @@ class ScheduleSearch:
                 case Incomplete() | Diverged():
                     yield execution
                     return
-                case Passed() | Failed():
+                case Passed() | Failed() | Rejected():
                     expansion = expand_sleep_prefix(execution.steps, sleep_prefix)
                     unexplored_sleep_prefixes.extend(expansion.branches)
                     if expansion.is_representative:
@@ -278,7 +280,8 @@ def explore(runner: ExecutionRunner, config: Config) -> SearchResult:
         config: Validated exploration limits.
 
     Returns:
-        The first failing, incomplete, or divergent execution, or a pass.
+        The first failing, incomplete, or divergent execution; a rejection when
+        no execution satisfies ``config.ordering``; otherwise a pass.
     """
     started_at = monotonic()
     search = ScheduleSearch(
@@ -288,12 +291,32 @@ def explore(runner: ExecutionRunner, config: Config) -> SearchResult:
         lambda: config.max_preemptions,
         partial_order_reduction=config.partial_order_reduction,
     )
-    first_unpassed_execution = next(
-        (execution for execution in search if execution.outcome != Passed()),
-        Execution((), Passed()),
-    )
+    execution = first_unpassed_execution(search)
     statistics = Statistics(search.executions_run, search.steps_observed, monotonic() - started_at)
-    return SearchResult(first_unpassed_execution, statistics)
+    return SearchResult(execution, statistics)
+
+
+def first_unpassed_execution(executions: Iterable[Execution]) -> Execution:
+    """Return the first failing, incomplete, or divergent execution, or a pass.
+
+    Rejected executions are skipped. A pass needs one accepted execution;
+    otherwise the result is the last rejection.
+    """
+    accepted = False
+    rejection = Execution((), Rejected("no execution satisfies the schedule constraints"))
+    for execution in executions:
+        match execution.outcome:
+            case Rejected():
+                rejection = execution
+            case Passed():
+                accepted = True
+            case Failed() | Incomplete() | Diverged():
+                return execution
+            case _ as unreachable:
+                assert_never(unreachable)
+    if not accepted:
+        return rejection
+    return Execution((), Passed())
 
 
 def minimize(runner: ExecutionRunner, original: Execution, config: Config) -> Reduction:
@@ -318,7 +341,7 @@ def minimize(runner: ExecutionRunner, original: Execution, config: Config) -> Re
     match original.outcome:
         case Failed(failure):
             original_signature = failure.signature
-        case Passed() | Incomplete() | Diverged():
+        case Passed() | Incomplete() | Diverged() | Rejected():
             raise ValueError("only failing executions can be minimized")
         case _ as unreachable:
             assert_never(unreachable)
@@ -343,7 +366,7 @@ def minimize(runner: ExecutionRunner, original: Execution, config: Config) -> Re
                 execution.steps
             ) < count_preemptions(best_execution.steps):
                 best_execution = execution
-            case Passed() | Failed() | Incomplete():
+            case Passed() | Failed() | Incomplete() | Rejected():
                 pass
             case _ as unreachable:
                 assert_never(unreachable)
@@ -398,6 +421,7 @@ def check(
         DeadlockError: If unfinished tasks remain but none can proceed.
         IncompleteExplorationError: If a resource bound prevents completion.
         ReplayDivergenceError: If observed executions contradict a required prefix.
+        ScheduleConstraintError: If no execution satisfies ``config.ordering``.
 
     Examples:
         >>> def scenario():
@@ -415,6 +439,8 @@ def check(
                 raise IncompleteExplorationError(
                     limit, search_result.statistics, execution.cleanup_failures
                 )
+            case Rejected(message):
+                raise ScheduleConstraintError(message)
             case Diverged(message):
                 raise ReplayDivergenceError(message)
             case Failed(failure):
@@ -470,7 +496,7 @@ def replay(scenario: Callable[[], object], trace: Trace | Path) -> Trace:
             recorded_trace.execution(),
         )
     match execution.outcome:
-        case Diverged(message):
+        case Diverged(message) | Rejected(message):
             raise ReplayDivergenceError(message)
         case Incomplete(limit):
             raise IncompleteExplorationError(
