@@ -1,0 +1,101 @@
+[project]
+name = "ploom"
+version = "0.1.0"
+description = "Deterministic concurrency model checking for Python, inspired by Loom."
+readme = "README.md"
+requires-python = ">=3.13"
+license = "Apache-2.0"
+license-files = ["LICENSE"]
+dependencies = [
+    "cloudpickle>=3.1.2",
+    "pydantic>=2.14.1",
+    "tyro>=1.0.16",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Software Development :: Testing",
+    "Typing :: Typed",
+]
+
+[build-system]
+requires = ["uv_build>=0.11.3,<0.12"]
+build-backend = "uv_build"
+
+[project.scripts]
+ploom = "ploom.__main__:main"
+
+[project.entry-points.pytest11]
+ploom = "ploom.pytest_plugin"
+
+[dependency-groups]
+benchmarks = [
+    "pytest-codspeed>=5.0.3",
+]
+dev = [
+    "hypothesis>=6.0,<7",
+    "prek>=0.5.7,<0.6",
+    "pytest>=9.0,<10",
+    "pytest-cov>=7.0,<8",
+    "ruff>=0.15,<0.16",
+    "ty>=0.0.1,<0.1",
+]
+docs = [
+    "mkdocs>=1.6,<2",
+    "mkdocs-material>=9.8.0",
+    "mkdocstrings[python]>=1.0.8",
+]
+
+[tool.uv]
+required-version = ">=0.11.3"
+
+[tool.ty.environment]
+python-version = "3.13"
+
+[tool.ty.rules]
+all = "error"
+
+[tool.ruff]
+target-version = "py313"
+line-length = 100
+src = ["src"]
+
+[tool.ruff.lint]
+select = [
+    "A", "ANN", "ARG", "B", "C4", "D", "E", "F", "I", "N", "PERF", "PIE",
+    "PLC", "PLE", "PLR", "PLW", "PT", "PTH", "RET", "RUF", "SIM", "TC", "UP", "W",
+]
+# Google style documents constructor arguments in the class docstring.
+ignore = ["D107"]
+
+[tool.ruff.lint.flake8-bugbear]
+extend-immutable-calls = ["ploom.Config", "ploom.trace.Config"]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["D"]
+
+[tool.pytest.ini_options]
+minversion = "9.0"
+testpaths = ["tests", "src/ploom"]
+addopts = ["--strict-config", "--strict-markers", "--import-mode=importlib", "--doctest-modules", "-ra"]
+filterwarnings = ["error"]
+xfail_strict = true
+markers = ["benchmark: performance workload measured by pytest-codspeed"]
+
+[tool.coverage.run]
+branch = true
+source = ["ploom"]
+parallel = true
+patch = ["subprocess"]
+
+[tool.coverage.report]
+show_missing = true
+skip_empty = true
+fail_under = 95
+exclude_also = ["case _ as unreachable:"]

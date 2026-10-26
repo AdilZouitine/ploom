@@ -1,0 +1,37 @@
+name: CodSpeed
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  benchmarks:
+    name: Trace-processing performance
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v7
+        with:
+          version: "0.11.3"
+          enable-cache: true
+      - name: Set up instrumentable Python
+        id: python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+      - name: Install benchmark dependencies
+        run: uv sync --locked --group benchmarks --python "${{ steps.python.outputs.python-path }}"
+      - name: Measure the functional core
+        uses: CodSpeedHQ/action@v5
+        with:
+          mode: simulation
+          run: >-
+            uv run --locked --group benchmarks --python "${{ steps.python.outputs.python-path }}"
+            pytest benchmarks --codspeed

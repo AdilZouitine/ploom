@@ -1,0 +1,24 @@
+#:schema https://www.schemastore.org/prek.json
+# Local hooks run the tools locked in uv.lock, so commits and CI agree.
+
+[[repos]]
+repo = "builtin"
+hooks = [
+    { id = "trailing-whitespace" },
+    { id = "end-of-file-fixer" },
+    { id = "mixed-line-ending" },
+    { id = "check-merge-conflict" },
+    { id = "check-added-large-files" },
+    { id = "check-toml" },
+    { id = "check-yaml" },
+    { id = "check-json" },
+]
+
+[[repos]]
+repo = "local"
+hooks = [
+    { id = "ruff-format", name = "ruff format", language = "system", entry = "uv run --locked ruff format", types = ["python"] },
+    { id = "ruff-check", name = "ruff check", language = "system", entry = "uv run --locked ruff check --fix", types = ["python"] },
+    { id = "ty", name = "ty check", language = "system", entry = "uv run --locked ty check", types = ["python"], pass_filenames = false },
+    { id = "uv-lock", name = "uv lock --check", language = "system", entry = "uv lock --check", files = '^(pyproject\.toml|uv\.lock)$', pass_filenames = false },
+]
