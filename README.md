@@ -19,10 +19,10 @@ that order as a JSON trace. Replay the trace to get the same failure again.
 
 ## Install
 
-Ploom is not on PyPI yet. Install it from GitHub:
-
 ```sh
-uv add --dev "ploom @ git+https://github.com/AdilZouitine/ploom.git"
+uv add --dev ploom
+# or
+pip install ploom
 ```
 
 ## Example: two withdrawals from one account

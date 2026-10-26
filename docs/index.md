@@ -6,10 +6,10 @@ at each modeled operation.
 
 ## Install
 
-Until a PyPI release is available, install from the repository:
-
 ```sh
-uv add --dev "ploom @ git+https://github.com/AdilZouitine/ploom.git"
+uv add --dev ploom
+# or
+pip install ploom
 ```
 
 Scenarios can be module-level functions, local functions, closures, or partials.
