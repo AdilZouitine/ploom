@@ -39,6 +39,7 @@ from ploom.scenarios import ImportableScenario, SerializedScenario, load_scenari
 from ploom.subprocess_runner import subprocess_runner
 from ploom.thread_scheduler import TaskState, ThreadScheduler
 from ploom.trace import Provenance, ScenarioTransport
+from tests.helpers import failure_of
 
 
 class InlineRunner:
@@ -73,14 +74,6 @@ class ScriptedRunner:
         _expected_execution: Execution | None = None,
     ) -> Execution:
         return Execution((), self.outcome)
-
-
-def failure_of(execution: Execution) -> Failure:
-    match execution.outcome:
-        case Failed(failure):
-            return failure
-        case outcome:
-            pytest.fail(f"expected a failure, observed {outcome}")
 
 
 def yielding_scenario(root_yields: int, child_yields: int) -> Callable[[], None]:
