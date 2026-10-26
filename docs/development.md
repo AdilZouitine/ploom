@@ -44,9 +44,9 @@ uv run --locked --group docs mkdocs serve
 ```
 
 The strict build produces `site/`. CI builds it on every push and pull request.
-After all checks pass on `main`, CI publishes it to
-[GitHub Pages](https://adilzouitine.github.io/ploom/). API pages use mkdocstrings'
-Python handler and the Material theme.
+[Read the Docs](https://ploom.readthedocs.io/) builds and hosts the published site
+from `.readthedocs.yaml`. API pages use mkdocstrings' Python handler and the
+Material theme.
 
 ## Performance
 

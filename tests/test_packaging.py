@@ -2,6 +2,7 @@ import json
 import os
 import subprocess
 import sys
+import tomllib
 from pathlib import Path
 
 import pytest
@@ -37,5 +38,6 @@ def test_installed_distribution(distributions: list[Path], suffix: str, tmp_path
         timeout=30,
     )
     installed = json.loads(result.stdout)
-    assert installed["version"] == "0.1.0"
+    pyproject = tomllib.loads((Path(__file__).parents[1] / "pyproject.toml").read_text())
+    assert installed["version"] == pyproject["project"]["version"]
     assert environment.resolve() in Path(installed["file"]).resolve().parents

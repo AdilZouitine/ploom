@@ -1,6 +1,6 @@
 [project]
 name = "ploom"
-version = "0.1.0"
+version = "0.1.1"
 description = "Deterministic concurrency model checking for Python, inspired by Loom."
 readme = "README.md"
 requires-python = ">=3.13"
