@@ -142,13 +142,17 @@ at most two preemptions.
 | Area | Supported |
 | --- | --- |
 | Threads | `Thread(target, args, kwargs)`, `start`, `join`, `is_alive` |
-| Locks | `Lock`: blocking and nonblocking `acquire`, `release`, `locked`, `with` |
+| Locks | `Lock`, `RLock`: untimed blocking/nonblocking acquisition, release, status, `with` |
+| Coordination | `Event`, `Condition`, `Semaphore`, `BoundedSemaphore`: untimed waits and notifications |
+| Queues | FIFO `Queue` of immutable values, bounded capacity, nonblocking operations, `task_done`/`join` |
 | Shared state | `SharedCell` reads and writes of immutable values, `yield_now()` |
 | Entry points | Python API, pytest fixture, `python -m ploom` |
 | Interpreters | Standard CPython 3.13 and 3.14, free-threaded CPython 3.14 |
 
 Ploom sees only ploom operations, and it models them as sequentially consistent.
-It does not see `threading` locks, `Event`, `Queue`, I/O, or weak-memory effects.
+It does not see native `threading` or `queue` operations, I/O, or weak-memory effects.
+`Condition.notify(n)` models FIFO waiter selection; other selection policies and
+spurious condition wakeups are outside its coverage.
 It does not detect data races. Your assertions find the bugs.
 
 Ploom does not roll back files, network calls, or other external effects between

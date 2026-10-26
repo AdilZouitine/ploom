@@ -11,6 +11,11 @@ and a disabled GIL are not required.
 | --- | --- |
 | `Thread` | Target arguments, optional name, `start`, `join`, `is_alive` |
 | `Lock` | Blocking/nonblocking acquisition, release, status inspection, context manager |
+| `RLock` | Owner-only release, recursion, blocking/nonblocking acquisition, status, context manager |
+| `Event` | `set`, `clear`, `is_set`, untimed `wait`; notifications survive a subsequent clear |
+| `Semaphore`, `BoundedSemaphore` | Untimed blocking/nonblocking acquisition, `release(n)`, context manager |
+| `Condition` | Default `RLock` or supplied modeled lock, untimed `wait`/`wait_for`, FIFO `notify(n)`, `notify_all` |
+| `Queue[T]` | FIFO immutable values, bounded/unbounded capacity, blocking/nonblocking put/get, observations, `task_done`/`join` |
 | `SharedCell[T]` | Atomic modeled reads and writes |
 | `yield_now()` | A scheduling choice without a shared-state operation |
 
@@ -73,5 +78,44 @@ Worker requests, results, and saved traces share strict JSON boundary validation
 Wrong types, unknown fields, and inconsistent choices fail explicitly. The engine
 uses immutable dataclasses and enums; Pydantic stays at serialization boundaries.
 
-Event, Condition, Semaphore, Queue, native atomic operations, and a parallel stress
-backend are not implemented. Loom's C11 semantics are not Python's memory model.
+Native atomic operations and a parallel stress backend are not implemented.
+Loom's C11 semantics are not Python's memory model.
+
+## Coordination semantics
+
+These primitives use the same single-task, sequentially consistent scheduler as
+`SharedCell` and `Lock`; no modeled wait blocks on a native synchronization
+primitive. Timed waits, timed acquisition, and queue shutdown are unsupported.
+Only the untimed timeout sentinel is accepted. Semaphore initial counts must be
+nonnegative. Semaphore `release(n)` requires a positive `n`, and bounded releases
+must not exceed the initial count.
+
+`Event.set()` latches a notification for every already registered waiter. A later
+`clear()` resets the flag but does not undo those notifications. A wait that
+starts after clear blocks until another set. Events and conditions record wait
+registration separately from resumption so both orders are explored.
+
+`Condition.wait()` requires the associated lock to be acquired. It atomically
+registers a waiter and releases the lock, including all `RLock` recursion levels.
+After notification it competes to reacquire the lock and restores that depth.
+`wait_for(predicate)` evaluates the predicate while the caller holds the lock
+and repeats untimed waits until it becomes truthy. As with Python's basic lock,
+`Condition(Lock())` can check only that the lock is held, not which task holds it;
+`RLock` checks ownership. Locks must belong to the same execution.
+
+**Condition coverage uses FIFO notification selection.** `notify(n)` selects up
+to n oldest registered waiters; nonpositive n wakes none. `notify_all()` selects
+all currently registered waiters. The scheduler explores selected waiters'
+resumption and lock acquisition order, but does not explore other waiter
+selection policies or spurious condition wakeups. Python's public API does not
+promise FIFO selection, so a passing condition test covers this modeled policy
+only. During cancellation, waiters unregister without reacquiring a lock in the
+stopping execution; owned native threads are still joined by the scheduler.
+
+Queues accept the same deeply immutable payloads as `SharedCell`, preventing
+unmodeled shared mutation through aliases. Each successful put increments
+unfinished work, get removes an item without acknowledging it, `task_done()`
+acknowledges one item, and `join()` waits until unfinished work is zero. Queue
+observations (`qsize`, `empty`, `full`) are scheduling points and do not reserve
+an item or slot. `get_nowait`/`put_nowait` raise standard `queue.Empty`/`queue.Full`.
+Neither queues, mutexes, nor semaphores promise waiter fairness.

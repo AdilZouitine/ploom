@@ -143,3 +143,37 @@ far. Status `completed` means that no schedule with fewer preemptions reproduces
 the failure. `budget_exhausted` means that the budget stopped the search first.
 The other status is `disabled`. A nondeterministic scenario raises
 `ReplayDivergenceError` during minimization.
+
+## Producer and consumer
+
+Use modeled primitives throughout a scenario. A queue can coordinate workers
+without sleeps or native blocking:
+
+```python
+import ploom
+
+
+def scenario():
+    jobs = ploom.Queue[int](maxsize=1)
+
+    def consume():
+        assert jobs.get() == 42
+        jobs.task_done()
+
+    consumer = ploom.Thread(target=consume)
+    consumer.start()
+    jobs.put(42)
+    jobs.join()
+    consumer.join()
+
+
+ploom.check(scenario)
+```
+
+`ploom.Event` supports signaling, `ploom.Semaphore` and
+`ploom.BoundedSemaphore` model permit pools, and `ploom.RLock` supports recursive
+critical sections. `ploom.Condition` defaults to a modeled `RLock`; hold it while
+checking a shared predicate, waiting, or notifying. Its `notify(n)` selects FIFO
+waiters, and its model does not introduce spurious wakeups. See the
+[supported semantics](semantics.md#coordination-semantics) for coverage limits.
+All these primitives reject timed waits and acquisition.

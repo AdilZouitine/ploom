@@ -25,12 +25,16 @@ from ploom.exploration import (
     replay,
 )
 from ploom.primitives import Lock, SharedCell, Thread, yield_now
+from ploom.synchronization import BoundedSemaphore, Condition, Event, Queue, RLock, Semaphore
 from ploom.trace import Config, Provenance, ScenarioTransport, Trace, read_trace
 
 __all__ = [
+    "BoundedSemaphore",
+    "Condition",
     "Config",
     "DeadlockError",
     "Diverged",
+    "Event",
     "Execution",
     "ExecutionStatus",
     "ExplorationLimit",
@@ -44,10 +48,13 @@ __all__ = [
     "Outcome",
     "Passed",
     "Provenance",
+    "Queue",
+    "RLock",
     "Reduction",
     "ReductionStatus",
     "ReplayDivergenceError",
     "ScenarioTransport",
+    "Semaphore",
     "SharedCell",
     "Statistics",
     "Step",

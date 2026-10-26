@@ -65,6 +65,26 @@ class ModeledResource:
         """Wait until the scheduler selects this operation on this resource."""
         self.scheduler.checkpoint(PrimitiveOperation(kind, self.identity), can_proceed)
 
+    def checkpoint_attempt(
+        self,
+        blocking: bool,
+        blocking_kind: PrimitiveOperationKind,
+        nonblocking_kind: PrimitiveOperationKind,
+        can_proceed: Callable[[], bool],
+    ) -> None:
+        """Wait until ``can_proceed`` holds, or take a nonblocking attempt that never waits.
+
+        Args:
+            blocking: Whether the caller waits for ``can_proceed``.
+            blocking_kind: Operation recorded for a blocking attempt.
+            nonblocking_kind: Operation recorded for a nonblocking attempt.
+            can_proceed: Readiness predicate for a blocking attempt.
+        """
+        if blocking:
+            self.checkpoint(blocking_kind, can_proceed)
+            return
+        self.checkpoint(nonblocking_kind)
+
 
 def allocate_resource() -> ModeledResource:
     """Register a new resource with the current task's execution."""
@@ -165,11 +185,12 @@ class Lock:
         """
         if timeout != -1:
             raise NotImplementedError("timed lock acquisition is not modeled")
-        if blocking:
-            self._resource.checkpoint(PrimitiveOperationKind.LOCK_ACQUIRE, self._can_acquire)
-            self._locked = True
-            return True
-        self._resource.checkpoint(PrimitiveOperationKind.LOCK_TRY_ACQUIRE)
+        self._resource.checkpoint_attempt(
+            blocking,
+            PrimitiveOperationKind.LOCK_ACQUIRE,
+            PrimitiveOperationKind.LOCK_TRY_ACQUIRE,
+            self._can_acquire,
+        )
         acquired = not self._locked
         self._locked = True
         return acquired
@@ -193,6 +214,17 @@ class Lock:
         """
         self._resource.checkpoint(PrimitiveOperationKind.LOCK_LOCKED)
         return self._locked
+
+    # Condition uses the same lock protocol as threading.Condition.
+    def _is_owned(self) -> bool:
+        return self._locked
+
+    def _release_save(self) -> int:
+        self._locked = False
+        return 1
+
+    def _acquire_restore(self, _saved_depth: int) -> None:
+        self.acquire()
 
     def __enter__(self) -> bool:
         """Acquire before entering a modeled critical section."""

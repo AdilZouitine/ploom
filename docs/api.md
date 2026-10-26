@@ -10,6 +10,12 @@ and Google-style docstrings.
         - replay
         - Thread
         - Lock
+        - RLock
+        - Event
+        - Condition
+        - Semaphore
+        - BoundedSemaphore
+        - Queue
         - SharedCell
         - yield_now
         - Config
