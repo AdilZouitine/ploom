@@ -1,6 +1,6 @@
 site_name: ploom
 site_description: Find thread bugs and replay the failure.
-site_url: https://adilzouitine.github.io/ploom/
+site_url: https://ploom.readthedocs.io/
 repo_url: https://github.com/AdilZouitine/ploom
 repo_name: AdilZouitine/ploom
 strict: true
