@@ -153,6 +153,10 @@ activemq-data/
 .env
 .envrc
 .venv
+.venv-*/
+.ploom/
+site/
+.codspeed/
 env/
 venv/
 ENV/
