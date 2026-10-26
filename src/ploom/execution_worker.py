@@ -19,7 +19,11 @@ def main() -> None:
     request = WorkerRequest.model_validate_json(sys.stdin.buffer.read())
     sys.path[:] = request.import_path
     scenario = load_scenario(request.source)
-    scheduler = ThreadScheduler(request.config.max_steps, request.config.max_tasks)
+    scheduler = ThreadScheduler(
+        request.config.max_steps,
+        request.config.max_tasks,
+        partial_order_reduction=request.config.partial_order_reduction,
+    )
     execution = scheduler.execute(scenario, request.required_prefix, request.expected_execution)
     write_execution(Path(sys.argv[1]), execution)
 

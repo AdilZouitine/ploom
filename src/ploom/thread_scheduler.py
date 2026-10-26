@@ -202,6 +202,8 @@ class ThreadScheduler:
         max_tasks: Maximum concurrently running tasks, including the root task.
         join_timeout: Seconds to wait for each cancelled task, or None to wait
             until a supervising process enforces its deadline.
+        partial_order_reduction: Require resources and tasks to be allocated before
+            any child starts, preserving identities across commuting transitions.
         start_native_thread: Starts a native thread; injectable to test failure.
     """
 
@@ -211,6 +213,7 @@ class ThreadScheduler:
         max_tasks: int,
         *,
         join_timeout: float | None = None,
+        partial_order_reduction: bool = False,
         start_native_thread: Callable[[threading.Thread], None] = threading.Thread.start,
     ) -> None:
         self.coordination = threading.Condition()
@@ -227,10 +230,20 @@ class ThreadScheduler:
         self.max_tasks = max_tasks
         self.join_timeout = join_timeout
         self.resource_identity_counter = count()
+        self.partial_order_reduction = partial_order_reduction
 
     def allocate_resource(self) -> int:
         """Assign a stable execution-local identity while one task owns control."""
+        self.require_initial_allocation()
         return next(self.resource_identity_counter)
+
+    def require_initial_allocation(self) -> None:
+        """Reject allocation after a child starts when reduction is enabled."""
+        if self.partial_order_reduction and any(task != ROOT_TASK for task in self.native_threads):
+            raise NotImplementedError(
+                "partial-order reduction requires all resources and threads "
+                "to be constructed before starting any child thread"
+            )
 
     @property
     def cancelling(self) -> bool:
@@ -246,6 +259,7 @@ class ThreadScheduler:
     def create_task(self) -> int:
         """Register an unstarted task without acquiring an OS thread."""
         with self.coordination:
+            self.require_initial_allocation()
             task = len(self.task_states)
             self.task_states[task] = TaskState.UNSTARTED
             return task

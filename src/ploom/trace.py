@@ -32,6 +32,8 @@ class Config(BaseModel):
         max_preemptions: Explore only schedules with at most this many preemptions,
             or None to explore every schedule. A bounded pass covers only the
             schedules within the bound.
+        partial_order_reduction: Opt into sleep-set reduction under the documented
+            modeled-effects contract. Preemption bounds use exhaustive search.
         hash_seed: ``PYTHONHASHSEED`` for every worker. Each schedule runs in a fresh
             process, so ``str`` hashing and set order must not change between them.
         minimize_executions: Additional executions allowed for failure reduction.
@@ -54,6 +56,7 @@ class Config(BaseModel):
     max_tasks: int = Field(default=16, gt=0)
     timeout: float = Field(default=30.0, gt=0)
     max_preemptions: int | None = Field(default=None, ge=0)
+    partial_order_reduction: bool = False
     hash_seed: int = Field(default=0, ge=0, le=4_294_967_295)
     minimize_executions: int = Field(default=100, ge=0)
     minimize_timeout: float = Field(default=2.0, ge=0)

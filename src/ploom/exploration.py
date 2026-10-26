@@ -23,6 +23,7 @@ from ploom.execution import (
     alternative_prefixes,
     count_preemptions,
 )
+from ploom.partial_order import SleepPrefix, expand_sleep_prefix
 from ploom.subprocess_runner import subprocess_runner
 from ploom.trace import Config, Trace, read_trace, write_trace
 
@@ -185,11 +186,14 @@ class ScheduleSearch:
         deadline: float,
         max_executions: int,
         preemption_bound: Callable[[], int | None],
+        *,
+        partial_order_reduction: bool = False,
     ) -> None:
         self.runner = runner
         self.deadline = deadline
         self.max_executions = max_executions
         self.preemption_bound = preemption_bound
+        self.partial_order_reduction = partial_order_reduction
         self.executions_run = 0
         self.steps_observed = 0
 
@@ -197,23 +201,62 @@ class ScheduleSearch:
         """Yield executions until the tree, the bound, or the budget is exhausted."""
         # prefixes queued under a looser bound still run after the bound
         # tightens. Store each prefix's preemption count to skip them at pop time.
+        if self.partial_order_reduction and self.preemption_bound() is None:
+            yield from self.sleep_set_executions()
+            return
         unexplored_prefixes: list[tuple[int, ...]] = [()]
         while unexplored_prefixes:
             preemption_bound = self.preemption_bound()
             if preemption_bound is not None and preemption_bound < 0:
                 return
-            if self.executions_run == self.max_executions:
+            if self.budget_exhausted:
                 yield Execution((), Incomplete(ExplorationLimit.SCHEDULES))
                 return
             required_prefix = unexplored_prefixes.pop()
-            execution = self.runner.run(required_prefix, self.deadline - monotonic())
-            self.executions_run += 1
-            self.steps_observed += len(execution.steps)
+            execution = self.run_schedule(required_prefix)
             yield execution
             branches = alternative_prefixes(
                 execution.steps, len(required_prefix), self.preemption_bound()
             )
             unexplored_prefixes.extend(reversed(branches))
+
+    def sleep_set_executions(self) -> Iterator[Execution]:
+        """Traverse sleep-set DFS, preserving incomplete and divergent outcomes.
+
+        Workers still run complete schedules. A suffix entering a sleeping
+        transition is discarded only after its awake alternatives are queued.
+        This avoids coupling the worker protocol to the search algorithm.
+        """
+        unexplored_sleep_prefixes = [SleepPrefix()]
+        while unexplored_sleep_prefixes:
+            if self.budget_exhausted:
+                yield Execution((), Incomplete(ExplorationLimit.SCHEDULES))
+                return
+            sleep_prefix = unexplored_sleep_prefixes.pop()
+            execution = self.run_schedule(sleep_prefix.tasks)
+            match execution.outcome:
+                case Incomplete() | Diverged():
+                    yield execution
+                    return
+                case Passed() | Failed():
+                    expansion = expand_sleep_prefix(execution.steps, sleep_prefix)
+                    unexplored_sleep_prefixes.extend(expansion.branches)
+                    if expansion.is_representative:
+                        yield execution
+                case _ as unreachable:
+                    assert_never(unreachable)
+
+    @property
+    def budget_exhausted(self) -> bool:
+        """Whether ``max_executions`` executions have already run."""
+        return self.executions_run == self.max_executions
+
+    def run_schedule(self, required_prefix: tuple[int, ...]) -> Execution:
+        """Run one schedule within the remaining time and count it."""
+        execution = self.runner.run(required_prefix, self.deadline - monotonic())
+        self.executions_run += 1
+        self.steps_observed += len(execution.steps)
+        return execution
 
 
 @dataclass(frozen=True)
@@ -239,7 +282,11 @@ def explore(runner: ExecutionRunner, config: Config) -> SearchResult:
     """
     started_at = monotonic()
     search = ScheduleSearch(
-        runner, started_at + config.timeout, config.max_executions, lambda: config.max_preemptions
+        runner,
+        started_at + config.timeout,
+        config.max_executions,
+        lambda: config.max_preemptions,
+        partial_order_reduction=config.partial_order_reduction,
     )
     first_unpassed_execution = next(
         (execution for execution in search if execution.outcome != Passed()),

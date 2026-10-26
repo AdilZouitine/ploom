@@ -173,7 +173,9 @@ covers benchmarks and CI.
 Ploom is inspired by [Loom](https://github.com/tokio-rs/loom), the concurrency
 testing library for Rust. Loom showed how to explore schedules and reproduce
 failures. Ploom defines its own Python operations. It does not implement Loom's
-C11 memory model or its partial-order reduction.
+C11 memory model. Optional sleep-set partial-order reduction skips equivalent
+cell/lock interleavings under an explicit modeled-effects contract; see the
+[guarantees](docs/semantics.md#opt-in-partial-order-reduction).
 
 ## License
 

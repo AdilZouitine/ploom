@@ -177,3 +177,20 @@ checking a shared predicate, waiting, or notifying. Its `notify(n)` selects FIFO
 waiters, and its model does not introduce spurious wakeups. See the
 [supported semantics](semantics.md#coordination-semantics) for coverage limits.
 All these primitives reject timed waits and acquisition.
+
+## Reduce equivalent schedules
+
+For scenarios whose cross-thread effects all use ploom operations, opt into
+partial-order reduction:
+
+```python
+ploom.check(scenario, config=ploom.Config(partial_order_reduction=True))
+```
+
+Construct all cells, locks, and thread objects before starting any child thread.
+Use only task-local computation between modeled operations. The reducer skips
+equivalent interleavings of independent cell and lock operations while retaining
+conflicting orders. See [the precise contract](semantics.md#opt-in-partial-order-reduction)
+before enabling it. The default exhaustive mode remains useful when adapting an
+existing scenario. With a preemption bound, exploration automatically uses the
+ordinary exhaustive algorithm within the bound.

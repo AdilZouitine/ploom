@@ -37,8 +37,8 @@ that validation.
 The explorer traverses every runnable-task choice until exhaustion, the first
 failure, or a resource limit. Exhaustive success applies to the specified finite
 scenario and supported modeled operations. With `max_preemptions` set, success
-applies only to schedules within that bound. There is no fairness guarantee or
-partial-order reduction in this version. A spinning task can exhaust its step or
+applies only to schedules within that bound. There is no fairness guarantee. Optional partial-order reduction has the
+additional contract described below. A spinning task can exhaust its step or
 time budget instead of giving another task a turn.
 
 The search requires a deterministic scenario: the same prefix must produce the
@@ -119,3 +119,49 @@ acknowledges one item, and `join()` waits until unfinished work is zero. Queue
 observations (`qsize`, `empty`, `full`) are scheduling points and do not reserve
 an item or slot. `get_nowait`/`put_nowait` raise standard `queue.Empty`/`queue.Full`.
 Neither queues, mutexes, nor semaphores promise waiter fairness.
+
+## Opt-in partial-order reduction
+
+`Config(partial_order_reduction=True)` uses sleep-set depth-first search to
+skip executions equivalent under swapping independent transitions. The default
+remains exhaustive enumeration. This is a sequentially consistent reduction,
+not Loom's C11 model or a claim about native Python memory behavior.
+
+Opting in requires a stronger scenario contract:
+
+- Construct every modeled resource and thread before starting the first child.
+  Ploom rejects later resource or thread construction in this mode, including
+  construction by workers. Execution-local identities must remain stable.
+- Share and observe state only through modeled operations. Python code between
+  operations may compute with task-local values and make local assertions. It
+  must not communicate through mutable containers, globals, output, object
+  identities, external state, or other uninstrumented effects. In particular,
+  a custom logging callback that changes another task's behavior is unsupported.
+- Keep the scenario deterministic and finite, as with ordinary exploration.
+
+A transition consists of the selected operation and the following uninterrupted
+Python segment. Operations on distinct cell/lock resources commute; two reads
+of the same cell also commute. All other same-resource pairs are dependent.
+Thread start, join, lifecycle inspection, begin, yield, coordination primitive
+(`Event`, `Condition`, `RLock`, `Semaphore`, `Queue`), and unknown operations
+are conservatively dependent with every transition. This preserves task-local
+order, synchronization, failures, and deadlocks under the contract above.
+Resource and task allocation never occurs inside a commuting transition.
+
+The DFS keeps a sleep set of enabled transitions covered by earlier sibling
+subtrees. After choosing a transition, only independent sleeping transitions
+remain asleep. Choosing a sleeping transition would duplicate an earlier
+subtree's equivalence class; the search queues its awake alternatives and
+ignores that suffix. Because dependent transitions wake sleepers, later
+conflicting operations are still explored. Workers currently execute complete
+schedules before the search identifies these duplicate suffixes, so execution
+counts include those attempts. Runtime limits and replay divergence are never
+silently discarded. No program-state hashing or equality assumption is used.
+
+When `max_preemptions` is set, ploom falls back to exhaustive enumeration within
+that bound: commuting transitions can change preemption counts, so this version
+does not combine sleep-set pruning with the bound. Counterexample minimization
+also uses exhaustive search with its decreasing preemption bound. Saved traces
+retain the reduction setting; replay runs their exact schedule without pruning.
+A successful unbounded reduced search covers every terminal behavior class under
+the stated independence contract, rather than enumerating every schedule.
