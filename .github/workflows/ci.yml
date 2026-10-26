@@ -68,7 +68,25 @@ jobs:
       - name: Build strict MkDocs site
         run: uv run --locked --group docs mkdocs build --strict
       - name: Upload rendered documentation
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-pages-artifact@v4
         with:
-          name: documentation
           path: site/
+
+  publish-documentation:
+    name: Publish documentation
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [check, documentation]
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    concurrency:
+      group: github-pages
+      cancel-in-progress: false
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

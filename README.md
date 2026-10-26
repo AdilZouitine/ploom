@@ -15,7 +15,7 @@ and still miss the bad order. Ploom runs your test under a controlled scheduler.
 It tries every order of ploom operations, stops at the first failure, and saves
 that order as a JSON trace. Replay the trace to get the same failure again.
 
-[Guide](docs/index.md) · [Guarantees](docs/semantics.md) · [Python API](docs/api.md) · [Development](docs/development.md)
+[Documentation](https://adilzouitine.github.io/ploom/) · [Guide](https://adilzouitine.github.io/ploom/guide/) · [Guarantees](https://adilzouitine.github.io/ploom/semantics/) · [Python API](https://adilzouitine.github.io/ploom/api/) · [Development](https://adilzouitine.github.io/ploom/development/)
 
 ## Install
 
@@ -161,7 +161,7 @@ uv sync --locked
 make check
 ```
 
-Run `make docs` to build the documentation. The [development guide](docs/development.md)
+Run `make docs` to build the documentation. The [development guide](https://adilzouitine.github.io/ploom/development/)
 covers benchmarks and CI.
 
 ## Acknowledgment

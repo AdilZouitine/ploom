@@ -43,8 +43,10 @@ make docs
 uv run --locked --group docs mkdocs serve
 ```
 
-The strict build produces `site/`. CI builds it and uploads the rendered site as
-an artifact. API pages use mkdocstrings' Python handler and the Material theme.
+The strict build produces `site/`. CI builds it on every push and pull request.
+After all checks pass on `main`, CI publishes it to
+[GitHub Pages](https://adilzouitine.github.io/ploom/). API pages use mkdocstrings'
+Python handler and the Material theme.
 
 ## Performance
 
